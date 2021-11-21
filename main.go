@@ -75,7 +75,7 @@ type WeatherResponse struct {
 
 var k = koanf.New(".")
 
-func fetchWeather() (WeatherResponse, error) {
+func fetchWeather(location string) (WeatherResponse, error) {
 	var res WeatherResponse
 
 	baseUrl, err := url.Parse("https://api.openweathermap.org/data/2.5/weather")
@@ -85,7 +85,7 @@ func fetchWeather() (WeatherResponse, error) {
 	}
 
 	params := url.Values{}
-	params.Add("q", k.String("weather_api.api_location"))
+	params.Add("q", location)
 	params.Add("appid", k.String("weather_api.appid"))
 	params.Add("units", k.String("weather_api.units"))
 
@@ -113,7 +113,7 @@ func fetchWeather() (WeatherResponse, error) {
 	return res, errors.New(fmt.Sprintf("Request failed with status: %d", resp.StatusCode))
 }
 
-func writeWeather(res WeatherResponse) error {
+func writeWeather(weather WeatherResponse, location string) error {
 	client := influxdb2.NewClientWithOptions(k.String("influxdb.hostname"), k.String("influxdb.token"), influxdb2.DefaultOptions().SetBatchSize(20))
 
 	defer client.Close()
@@ -121,10 +121,10 @@ func writeWeather(res WeatherResponse) error {
 	writer := client.WriteAPI(k.String("influxdb.org"), k.String("influxdb.bucket"))
 
 	p := influxdb2.NewPointWithMeasurement(k.String("influxdb.measurement")).
-		AddTag("location", k.String("weather_api.api_location")).
 		AddField("temperature", res.Main.Temp).
 		AddField("humidity", res.Main.Humidity).
 		AddField("pressure", res.Main.Pressure)
+		AddTag("location", location).
 
 	writer.WritePoint(p)
 	writer.Flush()
@@ -139,6 +139,12 @@ func main() {
 
 	log.Printf("Starting weather virtual sensor reporting each %d seconds...", k.Int("sensor.interval"))
 
+	locations := k.Strings("weather_api.locations")
+
+	if len(locations) < 1 {
+		log.Fatal("Weather locations are empty! Aborting...")
+	}
+
 	sigs := make(chan os.Signal)
 	ticks := make(chan bool)
 
@@ -152,19 +158,21 @@ func main() {
 	}()
 
 	for {
-		weather, err := fetchWeather()
+		for _, location := range locations {
+			weather, err := fetchWeather(location)
 
-		if err != nil {
-			log.Printf("Error fetching the weather: %v\n", err)
+			if err != nil {
+				log.Printf("Error fetching the weather: %v\n", err)
+			}
+
+			log.Printf("Weather fetched for location '%s'", location)
+
+			writeWeather(weather, location)
 		}
-
-		log.Printf("Weather fetched for location '%s'\n", k.String("weather_api.api_location"))
-
-		writeWeather(weather)
 
 		select {
 		case sig := <-sigs:
-			log.Printf("Signal %v captured, exiting...\n", sig)
+			log.Printf("Signal %v captured, exiting...", sig)
 			os.Exit(0)
 			break
 		case <-ticks:
