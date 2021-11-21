@@ -37,6 +37,8 @@ type MainSpec struct {
 	TempMax float32 `json:"temp_max"`
 	Pressure float32 `json:"pressure"`
 	Humidity float32 `json:"humidity"`
+	SeaLevel float32 `json:"sea_level"`
+	GroundLevel float32 `json:"grnd_level"`
 }
 
 type WindSpec struct {
@@ -47,6 +49,16 @@ type WindSpec struct {
 
 type CloudSpec struct {
 	All int `json:"all"`
+}
+
+type RainSpec struct {
+	LastHour float32 `json:"1h"`
+	Last3Hours float32 `json:"3h"`
+}
+
+type SnowSpec struct {
+	LastHour float32 `json:"1h"`
+	Last3Hours float32 `json:"3h"`
 }
 
 type SysSpec struct {
@@ -65,6 +77,8 @@ type WeatherResponse struct {
 	Visibility int `json:"visibility"`
 	Wind WindSpec `json:"wind"`
 	Clouds CloudSpec `json:"clouds"`
+	Rain RainSpec `json:"rain"`
+	Snow SnowSpec `json:"snow"`
 	Timestamp int `json:"dt"`
 	Sys SysSpec `json:"sys"`
 	Timezone int `json:"timezone"`
@@ -118,13 +132,35 @@ func writeWeather(weather WeatherResponse, location string) error {
 
 	defer client.Close()
 
+	var pressure float32
+
+	// We're interested in knowing the atmospheric pressure in the location
+	if weather.Main.GroundLevel == 0 {
+		pressure = weather.Main.Pressure
+	} else {
+		pressure = weather.Main.GroundLevel
+	}
+
 	writer := client.WriteAPI(k.String("influxdb.org"), k.String("influxdb.bucket"))
 
 	p := influxdb2.NewPointWithMeasurement(k.String("influxdb.measurement")).
-		AddField("temperature", res.Main.Temp).
-		AddField("humidity", res.Main.Humidity).
-		AddField("pressure", res.Main.Pressure)
 		AddTag("location", location).
+		AddTag("city", weather.Name).
+		AddTag("country", weather.Sys.Country).
+		AddField("visibility", weather.Visibility).
+		AddField("clouds", weather.Clouds.All).
+		AddField("wind_speed", weather.Wind.Speed).
+		AddField("wind_bearing", weather.Wind.Degree).
+		AddField("wind_gusts", weather.Wind.Gust).
+		AddField("rain_1h", weather.Rain.LastHour).
+		AddField("rain_3h", weather.Rain.Last3Hours).
+		AddField("snow_1h", weather.Snow.LastHour).
+		AddField("snow_3h", weather.Snow.Last3Hours).
+		AddField("humidity", weather.Main.Humidity).
+		AddField("temperature", weather.Main.Temp).
+		AddField("temperature_max", weather.Main.TempMax).
+		AddField("temperature_min", weather.Main.TempMin).
+		AddField("pressure", pressure)
 
 	writer.WritePoint(p)
 	writer.Flush()
