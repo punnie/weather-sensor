@@ -199,18 +199,16 @@ func main() {
 
 			if err != nil {
 				log.Printf("Error fetching the weather: %v\n", err)
+			} else {
+				log.Printf("Weather fetched for location '%s'", location)
+				writeWeather(weather, location)
 			}
-
-			log.Printf("Weather fetched for location '%s'", location)
-
-			writeWeather(weather, location)
 		}
 
 		select {
 		case sig := <-sigs:
 			log.Printf("Signal %v captured, exiting...", sig)
 			os.Exit(0)
-			break
 		case <-ticks:
 			continue
 		}
