@@ -1,0 +1,14 @@
+[sensor]
+interval = 300
+
+[weather_api]
+locations = [ "Lisbon,pt", "Porto,pt", "Penafiel,pt" ]
+appid = "YOUR OPENWEATHERMAP API KEY"
+units = "metric"
+
+[influxdb]
+hostname = "http://influx:8086/"
+token = ""
+org = ""
+bucket = "default"
+measurement = "weather"
